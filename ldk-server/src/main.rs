@@ -102,6 +102,8 @@ fn main() {
 		},
 	};
 
+	builder.set_runtime(runtime.handle().clone());
+
 	let node = match builder.build() {
 		Ok(node) => Arc::new(node),
 		Err(e) => {
@@ -131,7 +133,7 @@ fn main() {
 	};
 
 	println!("Starting up...");
-	match node.start_with_runtime(Arc::clone(&runtime)) {
+	match node.start() {
 		Ok(()) => {},
 		Err(e) => {
 			eprintln!("Failed to start up LDK Node: {}", e);

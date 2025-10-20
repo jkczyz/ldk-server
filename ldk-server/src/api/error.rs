@@ -78,7 +78,9 @@ impl From<NodeError> for LdkServerError {
 			| NodeError::InvalidNodeAlias
 			| NodeError::InvalidDateTime
 			| NodeError::InvalidFeeRate
-			| NodeError::UriParameterParsingFailed => {
+			| NodeError::UriParameterParsingFailed
+			| NodeError::InvalidBlindedPaths
+			| NodeError::AsyncPaymentServicesDisabled => {
 				(error.to_string(), LdkServerErrorCode::InvalidRequestError)
 			},
 
