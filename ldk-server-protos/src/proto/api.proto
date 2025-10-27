@@ -270,7 +270,9 @@ message SpliceOutRequest {
   string counterparty_node_id = 2;
 
   // A Bitcoin on-chain address to send the spliced-out funds.
-  string address = 3;
+  //
+  // If not set, an address from the node's on-chain wallet will be used.
+  optional string address = 3;
 
   // The amount of sats to splice out of the channel.
   uint64 splice_amount_sats = 4;
@@ -278,7 +280,11 @@ message SpliceOutRequest {
 
 // The response `content` for the `SpliceOut` API, when HttpStatusCode is OK (200).
 // When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
-message SpliceOutResponse {}
+message SpliceOutResponse {
+
+  // The Bitcoin on-chain address where the funds will be sent.
+  string address = 1;
+}
 
 // Update the config for a previously opened channel.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.update_channel_config

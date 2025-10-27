@@ -116,7 +116,7 @@ enum Commands {
 		#[arg(short, long)]
 		counterparty_node_id: String,
 		#[arg(short, long)]
-		address: String,
+		address: Option<String>,
 		#[arg(long)]
 		splice_amount_sats: u64,
 	},

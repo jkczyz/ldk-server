@@ -281,8 +281,10 @@ pub struct SpliceOutRequest {
 	#[prost(string, tag = "2")]
 	pub counterparty_node_id: ::prost::alloc::string::String,
 	/// A Bitcoin on-chain address to send the spliced-out funds.
-	#[prost(string, tag = "3")]
-	pub address: ::prost::alloc::string::String,
+	///
+	/// If not set, an address from the node's on-chain wallet will be used.
+	#[prost(string, optional, tag = "3")]
+	pub address: ::core::option::Option<::prost::alloc::string::String>,
 	/// The amount of sats to splice out of the channel.
 	#[prost(uint64, tag = "4")]
 	pub splice_amount_sats: u64,
@@ -291,7 +293,11 @@ pub struct SpliceOutRequest {
 /// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SpliceOutResponse {}
+pub struct SpliceOutResponse {
+	/// The Bitcoin on-chain address where the funds will be sent.
+	#[prost(string, tag = "1")]
+	pub address: ::prost::alloc::string::String,
+}
 /// Update the config for a previously opened channel.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.update_channel_config>
 #[allow(clippy::derive_partial_eq_without_eq)]

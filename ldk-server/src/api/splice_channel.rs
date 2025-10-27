@@ -30,15 +30,21 @@ pub(crate) fn handle_splice_out_request(
 	let user_channel_id = parse_user_channel_id(&request.user_channel_id)?;
 	let counterparty_node_id = parse_counterparty_node_id(&request.counterparty_node_id)?;
 
-	let address = Address::from_str(&request.address)
-		.map_err(|_| ldk_node::NodeError::InvalidAddress)?
-		.require_network(context.node.config().network)
+	let address = request
+		.address
+		.map(|address| {
+			Address::from_str(&address)
+				.and_then(|address| address.require_network(context.node.config().network))
+				.map_err(|_| ldk_node::NodeError::InvalidAddress)
+		})
+		.unwrap_or_else(|| context.node.onchain_payment().new_address())
 		.map_err(|_| {
 			LdkServerError::new(
 				InvalidRequestError,
 				"Address is not valid for LdkServer's configured network.".to_string(),
 			)
 		})?;
+	let address_str = address.to_string();
 
 	context.node.splice_out(
 		&user_channel_id,
@@ -47,7 +53,7 @@ pub(crate) fn handle_splice_out_request(
 		request.splice_amount_sats,
 	)?;
 
-	Ok(SpliceOutResponse {})
+	Ok(SpliceOutResponse { address: address_str })
 }
 
 fn parse_user_channel_id(id: &str) -> Result<UserChannelId, LdkServerError> {
