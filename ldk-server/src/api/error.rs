@@ -94,6 +94,7 @@ impl From<NodeError> for LdkServerError {
 			| NodeError::ProbeSendingFailed
 			| NodeError::ChannelCreationFailed
 			| NodeError::ChannelClosingFailed
+			| NodeError::ChannelSplicingFailed
 			| NodeError::ChannelConfigUpdateFailed
 			| NodeError::DuplicatePayment
 			| NodeError::InsufficientFunds
