@@ -18,6 +18,7 @@ pub const BOLT12_SEND_PATH: &str = "Bolt12Send";
 pub const OPEN_CHANNEL_PATH: &str = "OpenChannel";
 pub const SPLICE_IN_PATH: &str = "SpliceIn";
 pub const SPLICE_OUT_PATH: &str = "SpliceOut";
+pub const RBF_CHANNEL_PATH: &str = "RbfChannel";
 pub const CLOSE_CHANNEL_PATH: &str = "CloseChannel";
 pub const FORCE_CLOSE_CHANNEL_PATH: &str = "ForceCloseChannel";
 pub const LIST_CHANNELS_PATH: &str = "ListChannels";

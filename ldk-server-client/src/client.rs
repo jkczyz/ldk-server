@@ -24,10 +24,10 @@ use ldk_server_protos::api::{
 	ListChannelsResponse, ListForwardedPaymentsRequest, ListForwardedPaymentsResponse,
 	ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest, ListPeersResponse,
 	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
-	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
-	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
-	SpontaneousSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
-	VerifySignatureRequest, VerifySignatureResponse,
+	OpenChannelRequest, OpenChannelResponse, RbfChannelRequest, RbfChannelResponse,
+	SignMessageRequest, SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
+	SpliceOutResponse, SpontaneousSendRequest, SpontaneousSendResponse, UpdateChannelConfigRequest,
+	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_protos::endpoints::{
 	BOLT11_RECEIVE_PATH, BOLT11_SEND_PATH, BOLT12_RECEIVE_PATH, BOLT12_SEND_PATH,
@@ -35,8 +35,9 @@ use ldk_server_protos::endpoints::{
 	FORCE_CLOSE_CHANNEL_PATH, GET_BALANCES_PATH, GET_NODE_INFO_PATH, GET_PAYMENT_DETAILS_PATH,
 	GRAPH_GET_CHANNEL_PATH, GRAPH_GET_NODE_PATH, GRAPH_LIST_CHANNELS_PATH, GRAPH_LIST_NODES_PATH,
 	LIST_CHANNELS_PATH, LIST_FORWARDED_PAYMENTS_PATH, LIST_PAYMENTS_PATH, LIST_PEERS_PATH,
-	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, SIGN_MESSAGE_PATH, SPLICE_IN_PATH,
-	SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH, UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
+	ONCHAIN_RECEIVE_PATH, ONCHAIN_SEND_PATH, OPEN_CHANNEL_PATH, RBF_CHANNEL_PATH,
+	SIGN_MESSAGE_PATH, SPLICE_IN_PATH, SPLICE_OUT_PATH, SPONTANEOUS_SEND_PATH,
+	UPDATE_CHANNEL_CONFIG_PATH, VERIFY_SIGNATURE_PATH,
 };
 use ldk_server_protos::error::{ErrorCode, ErrorResponse};
 use prost::Message;
@@ -194,6 +195,15 @@ impl LdkServerClient {
 		&self, request: SpliceOutRequest,
 	) -> Result<SpliceOutResponse, LdkServerError> {
 		let url = format!("https://{}/{SPLICE_OUT_PATH}", self.base_url);
+		self.post_request(&request, &url).await
+	}
+
+	/// Replaces a pending splice's funding transaction with a higher-feerate version via RBF.
+	/// For API contract/usage, refer to docs for [`RbfChannelRequest`] and [`RbfChannelResponse`].
+	pub async fn rbf_channel(
+		&self, request: RbfChannelRequest,
+	) -> Result<RbfChannelResponse, LdkServerError> {
+		let url = format!("https://{}/{RBF_CHANNEL_PATH}", self.base_url);
 		self.post_request(&request, &url).await
 	}
 

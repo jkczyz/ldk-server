@@ -402,6 +402,27 @@ pub struct SpliceOutResponse {
 	#[prost(string, tag = "1")]
 	pub address: ::prost::alloc::string::String,
 }
+/// Replaces a pending splice's funding transaction with a higher-feerate version via RBF.
+/// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.rbf_channel>
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RbfChannelRequest {
+	/// The local `user_channel_id` of the channel.
+	#[prost(string, tag = "1")]
+	pub user_channel_id: ::prost::alloc::string::String,
+	/// The hex-encoded public key of the channel's counterparty node.
+	#[prost(string, tag = "2")]
+	pub counterparty_node_id: ::prost::alloc::string::String,
+}
+/// The response `content` for the `RbfChannel` API, when HttpStatusCode is OK (200).
+/// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RbfChannelResponse {}
 /// Update the config for a previously opened channel.
 /// See more: <https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.update_channel_config>
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

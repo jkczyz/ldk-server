@@ -333,6 +333,21 @@ message SpliceOutResponse {
   string address = 1;
 }
 
+// Replaces a pending splice's funding transaction with a higher-feerate version via RBF.
+// See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.rbf_channel
+message RbfChannelRequest {
+
+  // The local `user_channel_id` of the channel.
+  string user_channel_id = 1;
+
+  // The hex-encoded public key of the channel's counterparty node.
+  string counterparty_node_id = 2;
+}
+
+// The response `content` for the `RbfChannel` API, when HttpStatusCode is OK (200).
+// When HttpStatusCode is not OK (non-200), the response `content` contains a serialized `ErrorResponse`.
+message RbfChannelResponse {}
+
 // Update the config for a previously opened channel.
 // See more: https://docs.rs/ldk-node/latest/ldk_node/struct.Node.html#method.update_channel_config
 message UpdateChannelConfigRequest {

@@ -33,10 +33,10 @@ use ldk_server_client::ldk_server_protos::api::{
 	GraphListNodesResponse, ListChannelsRequest, ListChannelsResponse,
 	ListForwardedPaymentsRequest, ListPaymentsRequest, ListPeersRequest, ListPeersResponse,
 	OnchainReceiveRequest, OnchainReceiveResponse, OnchainSendRequest, OnchainSendResponse,
-	OpenChannelRequest, OpenChannelResponse, SignMessageRequest, SignMessageResponse,
-	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse, SpontaneousSendRequest,
-	SpontaneousSendResponse, UpdateChannelConfigRequest, UpdateChannelConfigResponse,
-	VerifySignatureRequest, VerifySignatureResponse,
+	OpenChannelRequest, OpenChannelResponse, RbfChannelRequest, RbfChannelResponse,
+	SignMessageRequest, SignMessageResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
+	SpliceOutResponse, SpontaneousSendRequest, SpontaneousSendResponse, UpdateChannelConfigRequest,
+	UpdateChannelConfigResponse, VerifySignatureRequest, VerifySignatureResponse,
 };
 use ldk_server_client::ldk_server_protos::types::{
 	bolt11_invoice_description, Bolt11InvoiceDescription, ChannelConfig, PageToken,
@@ -309,6 +309,15 @@ enum Commands {
 			help = "Bitcoin address to send the spliced-out funds. If not set, uses the node's on-chain wallet"
 		)]
 		address: Option<String>,
+	},
+	#[command(
+		about = "Replace a pending splice's funding transaction with a higher-feerate version via RBF"
+	)]
+	RbfChannel {
+		#[arg(help = "The local user_channel_id of the channel")]
+		user_channel_id: String,
+		#[arg(help = "The hex-encoded public key of the channel's counterparty node")]
+		counterparty_node_id: String,
 	},
 	#[command(about = "Return a list of known channels")]
 	ListChannels,
@@ -732,6 +741,13 @@ async fn main() {
 						address,
 						splice_amount_sats,
 					})
+					.await,
+			);
+		},
+		Commands::RbfChannel { user_channel_id, counterparty_node_id } => {
+			handle_response_result::<_, RbfChannelResponse>(
+				client
+					.rbf_channel(RbfChannelRequest { user_channel_id, counterparty_node_id })
 					.await,
 			);
 		},

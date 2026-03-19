@@ -13,7 +13,8 @@ use ldk_node::bitcoin::secp256k1::PublicKey;
 use ldk_node::bitcoin::Address;
 use ldk_node::UserChannelId;
 use ldk_server_protos::api::{
-	SpliceInRequest, SpliceInResponse, SpliceOutRequest, SpliceOutResponse,
+	RbfChannelRequest, RbfChannelResponse, SpliceInRequest, SpliceInResponse, SpliceOutRequest,
+	SpliceOutResponse,
 };
 
 use crate::api::error::LdkServerError;
@@ -60,6 +61,17 @@ pub(crate) fn handle_splice_out_request(
 	)?;
 
 	Ok(SpliceOutResponse { address: address.to_string() })
+}
+
+pub(crate) fn handle_rbf_channel_request(
+	context: Context, request: RbfChannelRequest,
+) -> Result<RbfChannelResponse, LdkServerError> {
+	let user_channel_id = parse_user_channel_id(&request.user_channel_id)?;
+	let counterparty_node_id = parse_counterparty_node_id(&request.counterparty_node_id)?;
+
+	context.node.rbf_channel(&user_channel_id, counterparty_node_id)?;
+
+	Ok(RbfChannelResponse {})
 }
 
 fn parse_user_channel_id(id: &str) -> Result<UserChannelId, LdkServerError> {
