@@ -352,17 +352,17 @@ fn main() {
 							}
 						},
 						Event::PaymentForwarded {
-							prev_channel_id,
-							next_channel_id,
-							prev_user_channel_id,
-							next_user_channel_id,
-							prev_node_id,
-							next_node_id,
+							prev_htlcs,
+							next_htlcs,
 							total_fee_earned_msat,
 							skimmed_fee_msat,
 							claim_from_onchain_tx,
 							outbound_amount_forwarded_msat
 						} => {
+							let prev = prev_htlcs.0.first();
+							let next = next_htlcs.0.first();
+							let prev_channel_id = prev.map(|h| h.channel_id).expect("prev_channel_id expected for ldk-server >=0.1");
+							let next_channel_id = next.map(|h| h.channel_id).expect("next_channel_id expected for ldk-server >=0.1");
 
 							info!("PAYMENT_FORWARDED: with outbound_amount_forwarded_msat {}, total_fee_earned_msat: {}, inbound channel: {}, outbound channel: {}",
 								outbound_amount_forwarded_msat.unwrap_or(0), total_fee_earned_msat.unwrap_or(0), prev_channel_id, next_channel_id
@@ -371,10 +371,10 @@ fn main() {
 							let forwarded_payment = forwarded_payment_to_proto(
 								prev_channel_id,
 								next_channel_id,
-								prev_user_channel_id,
-								next_user_channel_id,
-								prev_node_id,
-								next_node_id,
+								prev.and_then(|h| h.user_channel_id),
+								next.and_then(|h| h.user_channel_id),
+								prev.and_then(|h| h.node_id),
+								next.and_then(|h| h.node_id),
 								total_fee_earned_msat,
 								skimmed_fee_msat,
 								claim_from_onchain_tx,

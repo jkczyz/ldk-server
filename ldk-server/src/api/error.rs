@@ -91,9 +91,8 @@ impl From<NodeError> for LdkServerError {
 			| NodeError::InvalidFeeRate
 			| NodeError::UriParameterParsingFailed
 			| NodeError::InvalidBlindedPaths
-			| NodeError::AsyncPaymentServicesDisabled => {
-				(error.to_string(), LdkServerErrorCode::InvalidRequestError)
-			},
+			| NodeError::AsyncPaymentServicesDisabled
+			| NodeError::InvalidLnurl => (error.to_string(), LdkServerErrorCode::InvalidRequestError),
 			NodeError::ConnectionFailed
 			| NodeError::InvoiceCreationFailed
 			| NodeError::InvoiceRequestCreationFailed
@@ -110,7 +109,9 @@ impl From<NodeError> for LdkServerError {
 			| NodeError::InsufficientFunds
 			| NodeError::UnsupportedCurrency
 			| NodeError::HrnParsingFailed
-			| NodeError::LiquidityFeeTooHigh => (error.to_string(), LdkServerErrorCode::LightningError),
+			| NodeError::LiquidityFeeTooHigh
+			| NodeError::LnurlAuthFailed
+			| NodeError::LnurlAuthTimeout => (error.to_string(), LdkServerErrorCode::LightningError),
 			NodeError::AlreadyRunning
 			| NodeError::NotRunning
 			| NodeError::PersistenceFailed
