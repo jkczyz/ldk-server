@@ -1,0 +1,24 @@
+[node]
+network = "regtest"
+listening_addresses = ["0.0.0.0:3001"]
+rest_service_address = "0.0.0.0:3002"
+alias = "ldk_server"
+
+[storage.disk]
+dir_path = "/data/ldk-server"
+
+[log]
+level = "Debug"
+file = "/data/ldk-server/ldk-server.log"
+
+[tls]
+hosts = ["ldk-server"]
+
+[bitcoind]
+rpc_address = "bitcoind:18443"
+rpc_user = "rpcuser"
+rpc_password = "rpcpass"
+
+[rabbitmq]
+connection_string = ""
+exchange_name = ""

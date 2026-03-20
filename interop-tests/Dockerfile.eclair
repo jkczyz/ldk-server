@@ -1,0 +1,30 @@
+# Build stage
+FROM eclipse-temurin:21-jdk AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends git unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+RUN git clone --depth 1 --branch splicing-official https://github.com/ACINQ/eclair.git .
+RUN ./mvnw package -pl eclair-node -am -DskipTests -q
+
+# Extract the distribution ZIP to a known location
+RUN mkdir /opt/eclair && \
+    unzip -q eclair-node/target/eclair-node-*-bin.zip -d /tmp/eclair-dist && \
+    mv /tmp/eclair-dist/eclair-node-*/* /opt/eclair/
+
+# Runtime stage
+FROM eclipse-temurin:21-jre
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash curl jq \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/eclair /opt/eclair
+RUN chmod +x /opt/eclair/bin/eclair-node.sh
+
+RUN mkdir -p /data/eclair
+
+EXPOSE 9735 8080
+
+ENTRYPOINT ["/opt/eclair/bin/eclair-node.sh", "-Declair.datadir=/data/eclair", "-Declair.allow-unsafe-startup=true"]

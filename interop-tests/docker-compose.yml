@@ -1,0 +1,74 @@
+services:
+  bitcoind:
+    image: bitcoin/bitcoin:30
+    volumes:
+      - ./bitcoin.conf:/etc/bitcoin/bitcoin.conf:ro
+    command:
+      - -conf=/etc/bitcoin/bitcoin.conf
+    healthcheck:
+      test: ["CMD-SHELL", "bitcoin-cli -regtest -rpcuser=rpcuser -rpcpassword=rpcpass createwallet eclair 2>/dev/null; bitcoin-cli -regtest -rpcuser=rpcuser -rpcpassword=rpcpass getblockchaininfo > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks:
+      - interop-net
+
+  eclair:
+    build:
+      context: ..
+      dockerfile: interop-tests/Dockerfile.eclair
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    volumes:
+      - ./eclair.conf:/data/eclair/eclair.conf:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-u", ":eclairpass", "-X", "POST", "http://localhost:8080/getinfo"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    networks:
+      - interop-net
+
+  ldk-server:
+    build:
+      context: ..
+      dockerfile: interop-tests/Dockerfile.ldk-server
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    volumes:
+      - ldk-data:/data/ldk-server
+    healthcheck:
+      test: ["CMD", "test", "-f", "/data/ldk-server/regtest/api_key"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks:
+      - interop-net
+
+  test-runner:
+    build:
+      context: ..
+      dockerfile: interop-tests/Dockerfile.test-runner
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+      eclair:
+        condition: service_healthy
+      ldk-server:
+        condition: service_healthy
+    volumes:
+      - ./run-tests.sh:/tests/run-tests.sh:ro
+      - ./lib:/tests/lib:ro
+      - ldk-data:/data/ldk-server:ro
+    networks:
+      - interop-net
+
+volumes:
+  ldk-data:
+
+networks:
+  interop-net:
+    driver: bridge

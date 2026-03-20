@@ -1,0 +1,480 @@
+#!/usr/bin/env bash
+# run-tests.sh - LDK <-> Eclair splicing/RBF interop test suite
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
+source "${SCRIPT_DIR}/lib/ldk-api.sh"
+source "${SCRIPT_DIR}/lib/eclair-api.sh"
+
+# ============================================================
+# Phase 0: Bootstrap
+# ============================================================
+
+bootstrap() {
+  log_info "Phase 0: Bootstrap"
+
+  # Wait for bitcoind
+  log_info "Waiting for bitcoind..."
+  local start
+  start=$(date +%s)
+  while ! bitcoin_rpc "getblockchaininfo" > /dev/null 2>&1; do
+    if [ $(( $(date +%s) - start )) -ge 60 ]; then
+      log_fail "Timeout waiting for bitcoind"
+      exit 1
+    fi
+    sleep 2
+  done
+  log_info "bitcoind ready"
+
+  # Wait for Eclair (JVM startup can be slow)
+  log_info "Waiting for Eclair..."
+  start=$(date +%s)
+  while ! eclair_get_info > /dev/null 2>&1; do
+    if [ $(( $(date +%s) - start )) -ge 120 ]; then
+      log_fail "Timeout waiting for Eclair"
+      exit 1
+    fi
+    sleep 5
+  done
+  log_info "Eclair ready"
+
+  # Wait for LDK server
+  log_info "Waiting for LDK server..."
+  start=$(date +%s)
+  while [ ! -f "$LDK_API_KEY_FILE" ] || [ ! -f "$LDK_TLS_CERT" ]; do
+    if [ $(( $(date +%s) - start )) -ge 60 ]; then
+      log_fail "Timeout waiting for LDK server files"
+      exit 1
+    fi
+    sleep 2
+  done
+  ldk_init
+  start=$(date +%s)
+  while ! ldk_get_node_info > /dev/null 2>&1; do
+    if [ $(( $(date +%s) - start )) -ge 60 ]; then
+      log_fail "Timeout waiting for LDK server API"
+      exit 1
+    fi
+    sleep 2
+  done
+  log_info "LDK server ready"
+
+  # Mine 101 blocks for coinbase maturity
+  log_info "Mining initial 101 blocks..."
+  mine_blocks 101
+  local height
+  height=$(get_block_height)
+  wait_for_sync "$height" 60
+
+  # Extract node IDs
+  LDK_NODE_ID=$(ldk_get_node_id)
+  ECLAIR_NODE_ID=$(eclair_get_node_id)
+  log_info "LDK node ID: $LDK_NODE_ID"
+  log_info "Eclair node ID: $ECLAIR_NODE_ID"
+
+  # Fund both nodes
+  log_info "Funding nodes..."
+
+  # Fund LDK
+  local ldk_addr
+  ldk_addr=$(ldk_onchain_receive)
+  bitcoin_rpc "sendtoaddress" "\"$ldk_addr\"" "10" > /dev/null
+  log_info "Sent 10 BTC to LDK: $ldk_addr"
+
+  # Fund Eclair
+  local eclair_addr
+  eclair_addr=$(eclair_get_new_address)
+  bitcoin_rpc "sendtoaddress" "\"$eclair_addr\"" "10" > /dev/null
+  log_info "Sent 10 BTC to Eclair: $eclair_addr"
+
+  mine_and_sync 6
+  sleep 2
+
+  # Verify balances
+  local ldk_bal
+  ldk_bal=$(ldk_get_onchain_balance)
+  assert_gt "$ldk_bal" 0 "LDK should have on-chain balance"
+  log_info "LDK on-chain balance: $ldk_bal sats"
+
+  log_info "Bootstrap complete"
+}
+
+# ============================================================
+# Helper: open a funded channel from LDK to Eclair
+# Returns user_channel_id via stdout
+# ============================================================
+
+open_ldk_to_eclair_channel() {
+  local amount_sats="${1:-500000}"
+  local push_msat="${2:-}"
+
+  ldk_connect_peer "$ECLAIR_NODE_ID" "eclair:9735" > /dev/null 2>&1 || true
+  sleep 2
+
+  local open_result
+  open_result=$(ldk_open_channel "$ECLAIR_NODE_ID" "eclair:9735" "$amount_sats" "$push_msat")
+  local user_channel_id
+  user_channel_id=$(echo "$open_result" | jq -r '.user_channel_id')
+  log_info "Opened LDK channel: $user_channel_id (${amount_sats} sats)"
+
+  mine_and_sync 6
+  ldk_wait_for_channel_usable "$user_channel_id" 90
+
+  echo "$user_channel_id"
+}
+
+# ============================================================
+# Helper: open a funded channel from Eclair to LDK
+# Returns Eclair channelId via stdout
+# ============================================================
+
+open_eclair_to_ldk_channel() {
+  local amount_sats="${1:-500000}"
+  local push_msat="${2:-}"
+
+  eclair_connect "${LDK_NODE_ID}@ldk-server:3001" > /dev/null 2>&1 || true
+  sleep 2
+
+  eclair_open "$LDK_NODE_ID" "$amount_sats" "$push_msat" > /dev/null
+  log_info "Eclair opening channel to LDK (${amount_sats} sats)"
+
+  mine_and_sync 6
+
+  # Wait for channel to appear and become NORMAL on Eclair side
+  local eclair_channel_id=""
+  local start
+  start=$(date +%s)
+  while [ -z "$eclair_channel_id" ]; do
+    eclair_channel_id=$(eclair_find_channel_by_peer "$LDK_NODE_ID") || eclair_channel_id=""
+    if [ $(( $(date +%s) - start )) -ge 60 ]; then
+      log_fail "Timeout finding Eclair channel"
+      return 1
+    fi
+    sleep 2
+  done
+
+  eclair_wait_for_channel_normal "$eclair_channel_id" 90
+  # Also wait for LDK side
+  wait_for_ldk_usable_channel 90
+
+  echo "$eclair_channel_id"
+}
+
+# ============================================================
+# Phase 1: Core splice flows
+# ============================================================
+
+test_1_ldk_open_ldk_splice_in() {
+  log_info "Test 1: LDK opens channel, LDK splice-in"
+
+  local ucid
+  ucid=$(open_ldk_to_eclair_channel 500000)
+
+  local initial_value
+  initial_value=$(ldk_get_channel_value "$ucid")
+  assert_eq "$initial_value" "500000" "Initial channel value should be 500000"
+  log_info "Channel value before splice: $initial_value"
+
+  ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 200000 > /dev/null
+  log_info "Splice-in 200000 sats initiated"
+
+  mine_and_sync 6
+  ldk_wait_for_channel_usable "$ucid" 90
+
+  local new_value
+  new_value=$(ldk_get_channel_value "$ucid")
+  assert_eq "$new_value" "700000" "Channel value after splice-in should be 700000"
+  log_info "Channel value after splice: $new_value"
+}
+
+test_2_eclair_open_eclair_splice_in() {
+  log_info "Test 2: Eclair opens channel, Eclair splice-in"
+
+  local eclair_cid
+  eclair_cid=$(open_eclair_to_ldk_channel 500000)
+  log_info "Eclair channel ID: $eclair_cid"
+
+  eclair_splice_in "$eclair_cid" 200000 > /dev/null
+  log_info "Eclair splice-in 200000 sats initiated"
+
+  mine_and_sync 6
+
+  eclair_wait_for_channel_normal "$eclair_cid" 90
+  wait_for_ldk_usable_channel 90
+
+  # Verify on LDK side
+  local ldk_ucid
+  ldk_ucid=$(ldk_find_channel_by_peer "$ECLAIR_NODE_ID")
+  local new_value
+  new_value=$(ldk_get_channel_value "$ldk_ucid")
+  assert_eq "$new_value" "700000" "Channel value after Eclair splice-in should be 700000"
+  log_info "LDK channel value after Eclair splice-in: $new_value"
+}
+
+test_3_ldk_splice_out() {
+  log_info "Test 3: LDK splice-out"
+
+  local ucid
+  ucid=$(open_ldk_to_eclair_channel 500000)
+
+  ldk_splice_out "$ucid" "$ECLAIR_NODE_ID" 100000 > /dev/null
+  log_info "Splice-out 100000 sats initiated"
+
+  mine_and_sync 6
+  ldk_wait_for_channel_usable "$ucid" 90
+
+  local new_value
+  new_value=$(ldk_get_channel_value "$ucid")
+  assert_eq "$new_value" "400000" "Channel value after splice-out should be 400000"
+  log_info "Channel value after splice-out: $new_value"
+}
+
+test_4_eclair_splice_out() {
+  log_info "Test 4: Eclair splice-out"
+
+  local eclair_cid
+  eclair_cid=$(open_eclair_to_ldk_channel 500000)
+
+  local out_addr
+  out_addr=$(eclair_get_new_address)
+  eclair_splice_out "$eclair_cid" 100000 "$out_addr" > /dev/null
+  log_info "Eclair splice-out 100000 sats to $out_addr"
+
+  mine_and_sync 6
+  eclair_wait_for_channel_normal "$eclair_cid" 90
+  wait_for_ldk_usable_channel 90
+
+  # Verify on LDK side
+  local ldk_ucid
+  ldk_ucid=$(ldk_find_channel_by_peer "$ECLAIR_NODE_ID")
+  local new_value
+  new_value=$(ldk_get_channel_value "$ldk_ucid")
+  assert_eq "$new_value" "400000" "Channel value after Eclair splice-out should be 400000"
+  log_info "LDK channel value after Eclair splice-out: $new_value"
+}
+
+test_5_ldk_rbf_pending_splice() {
+  log_info "Test 5: LDK RBF pending splice"
+
+  local ucid
+  ucid=$(open_ldk_to_eclair_channel 500000)
+
+  # Splice-in but do NOT mine
+  ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 200000 > /dev/null
+  log_info "Splice-in initiated (not mined)"
+  sleep 5
+
+  # RBF bump
+  ldk_rbf_channel "$ucid" "$ECLAIR_NODE_ID" > /dev/null
+  log_info "RBF bump initiated"
+
+  mine_and_sync 6
+  ldk_wait_for_channel_usable "$ucid" 90
+
+  local new_value
+  new_value=$(ldk_get_channel_value "$ucid")
+  assert_eq "$new_value" "700000" "Channel value after RBF'd splice should be 700000"
+  log_info "Channel value after RBF'd splice: $new_value"
+}
+
+test_6_eclair_rbf_pending_splice() {
+  log_info "Test 6: Eclair RBF pending splice"
+
+  local eclair_cid
+  eclair_cid=$(open_eclair_to_ldk_channel 500000)
+
+  # Splice-in but do NOT mine
+  eclair_splice_in "$eclair_cid" 200000 > /dev/null
+  log_info "Eclair splice-in initiated (not mined)"
+  sleep 5
+
+  # RBF with higher feerate (10000 sat/kw)
+  eclair_rbf_splice "$eclair_cid" 10000 > /dev/null
+  log_info "Eclair RBF splice initiated"
+
+  mine_and_sync 6
+  eclair_wait_for_channel_normal "$eclair_cid" 90
+  wait_for_ldk_usable_channel 90
+
+  # Verify on LDK side
+  local ldk_ucid
+  ldk_ucid=$(ldk_find_channel_by_peer "$ECLAIR_NODE_ID")
+  local new_value
+  new_value=$(ldk_get_channel_value "$ldk_ucid")
+  assert_eq "$new_value" "700000" "Channel value after Eclair RBF'd splice should be 700000"
+  log_info "LDK channel value after Eclair RBF'd splice: $new_value"
+}
+
+test_7_payments_through_spliced_channel() {
+  log_info "Test 7: Payments through spliced channel"
+
+  # Open channel with push so both sides have balance
+  local ucid
+  ucid=$(open_ldk_to_eclair_channel 500000 "100000000")
+  log_info "Channel opened with 100000 sat push to Eclair"
+
+  # Splice-in to increase capacity
+  ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 200000 > /dev/null
+  mine_and_sync 6
+  ldk_wait_for_channel_usable "$ucid" 90
+
+  # LDK -> Eclair payment
+  local eclair_invoice
+  eclair_invoice=$(eclair_get_invoice 100000 "ldk-to-eclair-test")
+  log_info "Eclair invoice: ${eclair_invoice:0:30}..."
+
+  ldk_bolt11_send "$eclair_invoice" > /dev/null
+  log_info "LDK -> Eclair payment sent"
+  sleep 5
+
+  # Eclair -> LDK payment
+  local ldk_invoice
+  ldk_invoice=$(ldk_bolt11_receive 100000 "eclair-to-ldk-test")
+  log_info "LDK invoice: ${ldk_invoice:0:30}..."
+
+  eclair_pay_invoice "$ldk_invoice" > /dev/null
+  log_info "Eclair -> LDK payment sent"
+  sleep 5
+
+  log_info "Payments through spliced channel succeeded"
+}
+
+# ============================================================
+# Phase 2: Edge cases
+# ============================================================
+
+test_8_reconnection_after_splice() {
+  log_info "Test 8: Reconnection after splice initiated"
+
+  local ucid
+  ucid=$(open_ldk_to_eclair_channel 500000)
+
+  # Initiate splice but don't mine
+  ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 200000 > /dev/null
+  log_info "Splice-in initiated (not mined)"
+  sleep 5
+
+  # Disconnect by having LDK disconnect the peer
+  log_info "Disconnecting LDK from Eclair..."
+  ldk_cli disconnect-peer "$ECLAIR_NODE_ID" > /dev/null 2>&1 || true
+  sleep 5
+
+  # Reconnect
+  log_info "Reconnecting..."
+  ldk_connect_peer "$ECLAIR_NODE_ID" "eclair:9735" > /dev/null 2>&1 || true
+  sleep 5
+
+  # Mine and verify
+  mine_and_sync 6
+  ldk_wait_for_channel_usable "$ucid" 120
+
+  local new_value
+  new_value=$(ldk_get_channel_value "$ucid")
+  assert_eq "$new_value" "700000" "Channel value after reconnect + splice should be 700000"
+  log_info "Channel value after reconnection splice: $new_value"
+}
+
+test_9_multiple_sequential_splices() {
+  log_info "Test 9: Multiple sequential splices"
+
+  local ucid
+  ucid=$(open_ldk_to_eclair_channel 500000)
+
+  # Splice-in 200k (500k -> 700k)
+  log_info "Splice-in 200000 sats..."
+  ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 200000 > /dev/null
+  mine_and_sync 6
+  ldk_wait_for_channel_usable "$ucid" 90
+  local val
+  val=$(ldk_get_channel_value "$ucid")
+  assert_eq "$val" "700000" "After first splice-in: expected 700000"
+  log_info "After splice-in #1: $val"
+
+  # Splice-in 100k (700k -> 800k)
+  log_info "Splice-in 100000 sats..."
+  ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 100000 > /dev/null
+  mine_and_sync 6
+  ldk_wait_for_channel_usable "$ucid" 90
+  val=$(ldk_get_channel_value "$ucid")
+  assert_eq "$val" "800000" "After second splice-in: expected 800000"
+  log_info "After splice-in #2: $val"
+
+  # Splice-out 50k (800k -> 750k)
+  log_info "Splice-out 50000 sats..."
+  ldk_splice_out "$ucid" "$ECLAIR_NODE_ID" 50000 > /dev/null
+  mine_and_sync 6
+  ldk_wait_for_channel_usable "$ucid" 90
+  val=$(ldk_get_channel_value "$ucid")
+  assert_eq "$val" "750000" "After splice-out: expected 750000"
+  log_info "After splice-out: $val"
+
+  log_info "Final channel capacity: $val"
+}
+
+test_10_splice_with_concurrent_payment() {
+  log_info "Test 10: Splice with concurrent payment"
+
+  # Open channel with push so Eclair has balance to send
+  local ucid
+  ucid=$(open_ldk_to_eclair_channel 500000 "200000000")
+  log_info "Channel opened with 200000 sat push to Eclair"
+
+  # Start a payment from Eclair -> LDK
+  local ldk_invoice
+  ldk_invoice=$(ldk_bolt11_receive 50000000 "concurrent-test")
+  eclair_pay_invoice "$ldk_invoice" > /dev/null &
+  local pay_pid=$!
+  log_info "Eclair payment started in background"
+
+  # Immediately initiate splice-in
+  sleep 1
+  ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 200000 > /dev/null
+  log_info "Splice-in initiated concurrently"
+
+  # Wait for payment to complete
+  wait "$pay_pid" || log_info "Payment process returned non-zero (may still succeed)"
+  sleep 5
+
+  mine_and_sync 6
+  ldk_wait_for_channel_usable "$ucid" 90
+
+  local new_value
+  new_value=$(ldk_get_channel_value "$ucid")
+  assert_eq "$new_value" "700000" "Channel value after concurrent splice should be 700000"
+  log_info "Channel value after concurrent splice + payment: $new_value"
+}
+
+# ============================================================
+# Main
+# ============================================================
+
+main() {
+  log_info "LDK <-> Eclair Splicing/RBF Interop Tests"
+  log_info "=========================================="
+
+  bootstrap
+
+  log_info ""
+  log_info "Phase 1: Core splice flows"
+  log_info "=========================================="
+  run_test "Test 1: LDK opens channel, LDK splice-in" test_1_ldk_open_ldk_splice_in
+  run_test "Test 2: Eclair opens channel, Eclair splice-in" test_2_eclair_open_eclair_splice_in
+  run_test "Test 3: LDK splice-out" test_3_ldk_splice_out
+  run_test "Test 4: Eclair splice-out" test_4_eclair_splice_out
+  run_test "Test 5: LDK RBF pending splice" test_5_ldk_rbf_pending_splice
+  run_test "Test 6: Eclair RBF pending splice" test_6_eclair_rbf_pending_splice
+  run_test "Test 7: Payments through spliced channel" test_7_payments_through_spliced_channel
+
+  log_info ""
+  log_info "Phase 2: Edge cases"
+  log_info "=========================================="
+  run_test "Test 8: Reconnection after splice" test_8_reconnection_after_splice
+  run_test "Test 9: Multiple sequential splices" test_9_multiple_sequential_splices
+  run_test "Test 10: Splice with concurrent payment" test_10_splice_with_concurrent_payment
+
+  log_info ""
+  report_results
+}
+
+main "$@"

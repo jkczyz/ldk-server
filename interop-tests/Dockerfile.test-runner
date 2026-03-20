@@ -1,0 +1,20 @@
+# Build stage - get ldk-server-cli binary
+FROM rust:1.85-bookworm AS builder
+
+WORKDIR /build
+COPY . .
+
+RUN cargo build --release -p ldk-server-cli
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash curl jq openssl xxd \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/ldk-server-cli /usr/local/bin/ldk-server-cli
+
+RUN mkdir -p /tests/lib
+
+ENTRYPOINT ["bash", "/tests/run-tests.sh"]

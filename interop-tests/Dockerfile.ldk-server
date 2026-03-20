@@ -1,0 +1,24 @@
+# Build stage
+FROM rust:1.85-bookworm AS builder
+
+WORKDIR /build
+COPY . .
+
+RUN cargo build --release -p ldk-server -p ldk-server-cli
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/ldk-server /usr/local/bin/ldk-server
+COPY --from=builder /build/target/release/ldk-server-cli /usr/local/bin/ldk-server-cli
+COPY interop-tests/ldk-server-config.toml /etc/ldk-server/config.toml
+
+RUN mkdir -p /data/ldk-server
+
+EXPOSE 3001 3002
+
+ENTRYPOINT ["ldk-server", "/etc/ldk-server/config.toml"]
