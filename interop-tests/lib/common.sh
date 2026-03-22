@@ -226,11 +226,44 @@ assert_contains() {
   fi
 }
 
+# --- Test filtering ---
+# TESTS=5,6      - run only these test numbers
+# SKIP_TESTS=10,11 - skip these test numbers
+
+should_run_test() {
+  local name="$1"
+  local num
+  num=$(echo "$name" | grep -o 'Test [0-9]*' | grep -o '[0-9]*')
+
+  if [ -n "${SKIP_TESTS:-}" ] && [ -n "$num" ]; then
+    if echo ",$SKIP_TESTS," | grep -q ",$num,"; then
+      return 1
+    fi
+  fi
+
+  if [ -n "${TESTS:-}" ] && [ -n "$num" ]; then
+    if ! echo ",$TESTS," | grep -q ",$num,"; then
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
 # --- Test runner ---
 
 run_test() {
   local name="$1"
   local func="$2"
+
+  if ! should_run_test "$name"; then
+    TESTS_RUN=$((TESTS_RUN + 1))
+    TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+    log_skip "$name (filtered)"
+    TEST_RESULTS+=("SKIP: $name (filtered)")
+    return
+  fi
+
   TESTS_RUN=$((TESTS_RUN + 1))
 
   log_info "===== Running: $name ====="

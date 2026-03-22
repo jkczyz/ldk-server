@@ -66,6 +66,9 @@ services:
       - ./run-tests.sh:/tests/run-tests.sh:ro
       - ./lib:/tests/lib:ro
       - ldk-data:/data/ldk-server:ro
+    environment:
+      - TESTS=${TESTS:-}
+      - SKIP_TESTS=${SKIP_TESTS:-}
     networks:
       - interop-net
 

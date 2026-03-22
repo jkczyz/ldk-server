@@ -671,12 +671,14 @@ main() {
   run_test "Test 8: Reconnection after splice" test_8_reconnection_after_splice
   run_test "Test 9: Multiple sequential splices" test_9_multiple_sequential_splices
   # Tests 10-11: Disconnect before splice_locked, exchanged on reconnect.
-  # Eclair bug: resendChannelReadyIfNeeded sends announcement_signatures for the
-  # original funding (fundingTxIndex=0) when retransmitAnnSigs is set, but the
-  # retransmit bit is for the splice funding per the spec. LDK receives the stale
-  # signatures after promoting the splice and force-closes on verification failure.
-  skip_test "Test 10: LDK RBF disconnect before splice_locked" "Eclair sends stale announcement_signatures for original funding on reconnect"
-  skip_test "Test 11: Eclair RBF disconnect before splice_locked" "Eclair sends stale announcement_signatures for original funding on reconnect"
+  # Currently fail due to Eclair bug: resendChannelReadyIfNeeded sends
+  # announcement_signatures for the original funding (fundingTxIndex=0) when
+  # retransmitAnnSigs is set, but the retransmit bit is for the splice funding
+  # per the spec. LDK receives the stale signatures after promoting the splice
+  # and force-closes on verification failure.
+  # Skip with: SKIP_TESTS=10,11
+  run_test "Test 10: LDK disconnect before splice_locked" test_10_rbf_reconnect_splice_locked
+  run_test "Test 11: Eclair disconnect before splice_locked" test_11_eclair_rbf_reconnect_splice_locked
   run_test "Test 12: Splice with concurrent payment" test_12_splice_with_concurrent_payment
 
   log_info ""
