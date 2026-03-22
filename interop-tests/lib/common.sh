@@ -292,15 +292,6 @@ run_test() {
   fi
 }
 
-skip_test() {
-  local name="$1"
-  local reason="${2:-}"
-  TESTS_RUN=$((TESTS_RUN + 1))
-  TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
-  log_skip "$name: $reason"
-  TEST_RESULTS+=("SKIP: $name ($reason)")
-}
-
 report_results() {
   echo ""
   echo "========================================"
