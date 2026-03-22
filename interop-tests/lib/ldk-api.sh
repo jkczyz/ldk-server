@@ -138,10 +138,11 @@ ldk_bolt11_send() {
 
 # --- Helpers ---
 
-# Wait for a specific LDK channel to become usable
+# Poll until a specific LDK channel becomes usable.
+# Callers should mine any needed blocks before calling this.
 ldk_wait_for_channel_usable() {
   local user_channel_id="$1"
-  local timeout="${2:-90}"
+  local timeout="${2:-30}"
   local start seen=false
   start=$(date +%s)
   while true; do
@@ -162,18 +163,16 @@ ldk_wait_for_channel_usable() {
       ldk_list_channels | jq '.' >&2
       return 1
     fi
-    mine_blocks 4
     sleep 2
-    mine_blocks 4
   done
 }
 
-# Wait for a specific LDK channel to reach an expected value,
-# mining blocks between polls to drive confirmations.
+# Poll until a specific LDK channel reaches an expected value.
+# Callers should mine any needed blocks before calling this.
 ldk_wait_for_channel_value() {
   local user_channel_id="$1"
   local expected_value="$2"
-  local timeout="${3:-120}"
+  local timeout="${3:-30}"
   local start seen=false
   start=$(date +%s)
   while true; do
@@ -194,9 +193,7 @@ ldk_wait_for_channel_value() {
       ldk_list_channels | jq '.' >&2
       return 1
     fi
-    mine_blocks 4
     sleep 2
-    mine_blocks 4
   done
 }
 

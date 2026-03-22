@@ -139,7 +139,7 @@ mine_and_sync() {
 # --- Channel waiting ---
 
 wait_for_ldk_usable_channel() {
-  local timeout="${1:-90}"
+  local timeout="${1:-30}"
   local start
   start=$(date +%s)
   while true; do
@@ -156,10 +156,7 @@ wait_for_ldk_usable_channel() {
       echo "$channels" | jq '.' >&2
       return 1
     fi
-    # Mine blocks to trigger chain processing
-    mine_blocks 4
     sleep 2
-    mine_blocks 4
   done
 }
 
@@ -184,9 +181,7 @@ wait_for_eclair_channel_state() {
       log_fail "Timeout waiting for Eclair channel $channel_id state=$target_state (current=$state)"
       return 1
     fi
-    mine_blocks 4
     sleep 2
-    mine_blocks 4
   done
 }
 
