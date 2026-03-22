@@ -126,7 +126,7 @@ open_ldk_to_eclair_channel() {
 
 # ============================================================
 # Helper: open a funded channel from Eclair to LDK
-# Returns Eclair channelId via stdout
+# Outputs: "eclair_channel_id ldk_user_channel_id" (space-separated)
 # ============================================================
 
 open_eclair_to_ldk_channel() {
@@ -136,29 +136,50 @@ open_eclair_to_ldk_channel() {
   eclair_connect "${LDK_NODE_ID}@ldk-server:3001" > /dev/null 2>&1 || true
   sleep 2
 
+  # Snapshot channel IDs before open
+  local eclair_before ldk_before
+  eclair_before=$(eclair_channels 2>/dev/null | jq -r '.[].channelId' | sort)
+  ldk_before=$(ldk_cli list-channels 2>/dev/null | jq -r '.channels[].user_channel_id' | sort)
+
   eclair_open "$LDK_NODE_ID" "$amount_sats" "$push_msat" > /dev/null
   log_info "Eclair opening channel to LDK (${amount_sats} sats)"
 
   mine_and_sync 6
 
-  # Wait for channel to appear and become NORMAL on Eclair side
+  # Find the NEW Eclair channel by diffing
   local eclair_channel_id=""
   local start
   start=$(date +%s)
   while [ -z "$eclair_channel_id" ]; do
-    eclair_channel_id=$(eclair_find_channel_by_peer "$LDK_NODE_ID") || eclair_channel_id=""
+    local eclair_after
+    eclair_after=$(eclair_channels 2>/dev/null | jq -r '.[].channelId' | sort)
+    eclair_channel_id=$(comm -13 <(echo "$eclair_before") <(echo "$eclair_after") | head -1)
     if [ $(( $(date +%s) - start )) -ge 60 ]; then
-      log_fail "Timeout finding Eclair channel"
+      log_fail "Timeout finding new Eclair channel"
       return 1
     fi
-    sleep 2
+    [ -z "$eclair_channel_id" ] && sleep 2
   done
 
   eclair_wait_for_channel_normal "$eclair_channel_id" 90
-  # Also wait for LDK side
-  wait_for_ldk_usable_channel 90
 
-  echo "$eclair_channel_id"
+  # Find the NEW LDK channel by diffing
+  local ldk_ucid=""
+  start=$(date +%s)
+  while [ -z "$ldk_ucid" ]; do
+    local ldk_after
+    ldk_after=$(ldk_cli list-channels 2>/dev/null | jq -r '.channels[].user_channel_id' | sort)
+    ldk_ucid=$(comm -13 <(echo "$ldk_before") <(echo "$ldk_after") | head -1)
+    if [ $(( $(date +%s) - start )) -ge 60 ]; then
+      log_fail "Timeout finding new LDK channel"
+      return 1
+    fi
+    [ -z "$ldk_ucid" ] && { mine_blocks 1; sleep 2; }
+  done
+
+  ldk_wait_for_channel_usable "$ldk_ucid" 90
+
+  echo "$eclair_channel_id $ldk_ucid"
 }
 
 # ============================================================
@@ -186,16 +207,15 @@ test_1_ldk_open_ldk_splice_in() {
 test_2_eclair_open_eclair_splice_in() {
   log_info "Test 2: Eclair opens channel, Eclair splice-in"
 
-  local eclair_cid
-  eclair_cid=$(open_eclair_to_ldk_channel 500000)
-  log_info "Eclair channel ID: $eclair_cid"
+  local ids eclair_cid ldk_ucid
+  ids=$(open_eclair_to_ldk_channel 500000)
+  eclair_cid=$(echo "$ids" | awk '{print $1}')
+  ldk_ucid=$(echo "$ids" | awk '{print $2}')
+  log_info "Eclair channel: $eclair_cid, LDK channel: $ldk_ucid"
 
   eclair_splice_in "$eclair_cid" 200000 > /dev/null
   log_info "Eclair splice-in 200000 sats initiated"
 
-  # Verify via LDK side (Eclair channelId may change after splice)
-  local ldk_ucid
-  ldk_ucid=$(ldk_find_channel_by_peer "$ECLAIR_NODE_ID")
   ldk_wait_for_channel_value "$ldk_ucid" 700000
   log_info "LDK channel value after Eclair splice-in: 700000"
 }
@@ -231,8 +251,11 @@ test_3_ldk_splice_out() {
 test_4_eclair_splice_out() {
   log_info "Test 4: Eclair splice-out"
 
-  local eclair_cid
-  eclair_cid=$(open_eclair_to_ldk_channel 500000)
+  local ids eclair_cid ldk_ucid
+  ids=$(open_eclair_to_ldk_channel 500000)
+  eclair_cid=$(echo "$ids" | awk '{print $1}')
+  ldk_ucid=$(echo "$ids" | awk '{print $2}')
+  log_info "Eclair channel: $eclair_cid, LDK channel: $ldk_ucid"
 
   local out_addr
   out_addr=$(eclair_get_new_address)
@@ -240,8 +263,6 @@ test_4_eclair_splice_out() {
   log_info "Eclair splice-out 100000 sats to $out_addr"
 
   # Verify via LDK side; Eclair deducts mining fees so value won't be exactly 400000
-  local ldk_ucid
-  ldk_ucid=$(ldk_find_channel_by_peer "$ECLAIR_NODE_ID")
   local timeout=120 start
   start=$(date +%s)
   while true; do
@@ -310,8 +331,11 @@ test_5_ldk_rbf_pending_splice() {
 test_6_eclair_rbf_pending_splice() {
   log_info "Test 6: Eclair RBF pending splice"
 
-  local eclair_cid
-  eclair_cid=$(open_eclair_to_ldk_channel 500000)
+  local ids eclair_cid ldk_ucid
+  ids=$(open_eclair_to_ldk_channel 500000)
+  eclair_cid=$(echo "$ids" | awk '{print $1}')
+  ldk_ucid=$(echo "$ids" | awk '{print $2}')
+  log_info "Eclair channel: $eclair_cid, LDK channel: $ldk_ucid"
 
   # Snapshot mempool before splice
   local mempool_before
@@ -346,8 +370,6 @@ test_6_eclair_rbf_pending_splice() {
     "RBF txid should differ from original (original=$original_txid rbf=$rbf_txid)"
 
   # Verify via LDK side
-  local ldk_ucid
-  ldk_ucid=$(ldk_find_channel_by_peer "$ECLAIR_NODE_ID")
   ldk_wait_for_channel_value "$ldk_ucid" 700000
 
   # Verify the RBF transaction was mined, not the original
