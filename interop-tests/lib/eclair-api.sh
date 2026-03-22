@@ -104,10 +104,18 @@ eclair_pay_invoice() {
 
 # --- Helpers ---
 
-# Find Eclair channelId for a channel with a given counterparty
+# Find Eclair channelId for a channel with a given counterparty (prefer NORMAL state)
 eclair_find_channel_by_peer() {
   local node_id="$1"
-  eclair_api "channels" -d "nodeId=$node_id" | jq -r '.[0].channelId // empty'
+  local channels
+  channels=$(eclair_api "channels" -d "nodeId=$node_id")
+  # Prefer NORMAL channels, fall back to any
+  local cid
+  cid=$(echo "$channels" | jq -r '[.[] | select(.state == "NORMAL")] | last | .channelId // empty')
+  if [ -z "$cid" ]; then
+    cid=$(echo "$channels" | jq -r 'last | .channelId // empty')
+  fi
+  echo "$cid"
 }
 
 # Wait for an Eclair channel to reach NORMAL state

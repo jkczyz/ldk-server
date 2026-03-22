@@ -161,10 +161,35 @@ ldk_wait_for_channel_usable() {
   done
 }
 
-# Get the LDK user_channel_id for a channel with a given counterparty
+# Wait for a specific LDK channel to reach an expected value,
+# mining blocks between polls to drive confirmations.
+ldk_wait_for_channel_value() {
+  local user_channel_id="$1"
+  local expected_value="$2"
+  local timeout="${3:-120}"
+  local start
+  start=$(date +%s)
+  while true; do
+    local val
+    val=$(ldk_get_channel_value "$user_channel_id" 2>/dev/null) || val=""
+    if [ "$val" = "$expected_value" ]; then
+      return 0
+    fi
+    local elapsed=$(( $(date +%s) - start ))
+    if [ "$elapsed" -ge "$timeout" ]; then
+      log_fail "Timeout waiting for LDK channel $user_channel_id value=$expected_value (current=$val)"
+      ldk_list_channels | jq '.' >&2
+      return 1
+    fi
+    mine_blocks 1
+    sleep 2
+  done
+}
+
+# Get the LDK user_channel_id for a channel with a given counterparty (returns the last/newest)
 ldk_find_channel_by_peer() {
   local counterparty_node_id="$1"
   ldk_cli list-channels | jq -r \
     --arg cpid "$counterparty_node_id" \
-    '.channels[] | select(.counterparty_node_id == $cpid) | .user_channel_id' | head -1
+    '[.channels[] | select(.counterparty_node_id == $cpid)] | last | .user_channel_id'
 }
