@@ -480,7 +480,143 @@ test_9_multiple_sequential_splices() {
   done
 }
 
-test_10_splice_with_concurrent_payment() {
+test_10_rbf_reconnect_splice_locked() {
+  log_info "Test 10: RBF with disconnect before splice_locked"
+
+  local ucid
+  ucid=$(open_ldk_to_eclair_channel 500000)
+
+  # Snapshot mempool before splice
+  local mempool_before
+  mempool_before=$(get_mempool_txids)
+
+  # Splice-in (don't mine)
+  ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 200000 > /dev/null
+  log_info "Splice-in initiated (not mined)"
+  sleep 5
+
+  # Capture original splice txid
+  local mempool_after_splice
+  mempool_after_splice=$(get_mempool_txids)
+  local original_txid
+  original_txid=$(comm -13 <(echo "$mempool_before") <(echo "$mempool_after_splice") | head -1)
+  log_info "Original splice txid: $original_txid"
+
+  # RBF
+  ldk_rbf_channel "$ucid" "$ECLAIR_NODE_ID" > /dev/null
+  log_info "RBF initiated"
+  sleep 5
+
+  # Capture RBF txid
+  local mempool_after_rbf
+  mempool_after_rbf=$(get_mempool_txids)
+  local rbf_txid
+  rbf_txid=$(comm -13 <(echo "$mempool_before") <(echo "$mempool_after_rbf") | head -1)
+  log_info "RBF txid: $rbf_txid"
+  assert_eq "$([ "$original_txid" != "$rbf_txid" ] && echo "true" || echo "false")" "true" \
+    "RBF txid should differ from original"
+
+  # Mine a few blocks so the RBF tx confirms but splice_locked hasn't been exchanged yet
+  mine_and_sync 3
+  sleep 2
+
+  # Disconnect BEFORE splice_locked can be fully exchanged.
+  # LDK will see more confirmations while disconnected and queue splice_locked.
+  log_info "Disconnecting LDK from Eclair..."
+  ldk_cli disconnect-peer "$ECLAIR_NODE_ID" > /dev/null 2>&1 || true
+  sleep 3
+
+  # Mine remaining blocks while disconnected so LDK reaches the
+  # splice_locked threshold but cannot send the message to Eclair
+  mine_blocks 10
+  sleep 5
+  log_info "Mined blocks while disconnected"
+
+  # Reconnect — LDK should resend splice_locked on reconnection
+  log_info "Reconnecting..."
+  ldk_connect_peer "$ECLAIR_NODE_ID" "eclair:9735" > /dev/null 2>&1 || true
+  sleep 5
+
+  # Wait for the RBF splice to lock on both sides
+  ldk_wait_for_channel_value "$ucid" 700000
+
+  # Verify the RBF tx was the one that confirmed
+  local rbf_confs
+  rbf_confs=$(get_tx_confirmations "$rbf_txid")
+  assert_gt "$rbf_confs" 0 "RBF tx $rbf_txid should be confirmed"
+  log_info "RBF tx $rbf_txid confirmed with $rbf_confs confirmations after reconnect"
+}
+
+test_11_eclair_rbf_reconnect_splice_locked() {
+  log_info "Test 11: Eclair RBF with disconnect before splice_locked"
+
+  local ids eclair_cid ldk_ucid
+  ids=$(open_eclair_to_ldk_channel 500000)
+  eclair_cid=$(echo "$ids" | awk '{print $1}')
+  ldk_ucid=$(echo "$ids" | awk '{print $2}')
+  log_info "Eclair channel: $eclair_cid, LDK channel: $ldk_ucid"
+
+  # Snapshot mempool
+  local mempool_before
+  mempool_before=$(get_mempool_txids)
+
+  # Eclair splice-in (don't mine)
+  eclair_splice_in "$eclair_cid" 200000 > /dev/null
+  log_info "Eclair splice-in initiated (not mined)"
+  sleep 5
+
+  # Capture original txid
+  local mempool_after_splice
+  mempool_after_splice=$(get_mempool_txids)
+  local original_txid
+  original_txid=$(comm -13 <(echo "$mempool_before") <(echo "$mempool_after_splice") | head -1)
+  log_info "Original splice txid: $original_txid"
+
+  # Eclair RBF
+  eclair_rbf_splice "$eclair_cid" 10 > /dev/null
+  log_info "Eclair RBF initiated"
+  sleep 5
+
+  # Capture RBF txid
+  local mempool_after_rbf
+  mempool_after_rbf=$(get_mempool_txids)
+  local rbf_txid
+  rbf_txid=$(comm -13 <(echo "$mempool_before") <(echo "$mempool_after_rbf") | head -1)
+  log_info "RBF txid: $rbf_txid"
+  assert_eq "$([ "$original_txid" != "$rbf_txid" ] && echo "true" || echo "false")" "true" \
+    "RBF txid should differ from original"
+
+  # Mine a few blocks to confirm the RBF tx
+  mine_and_sync 3
+  sleep 2
+
+  # Disconnect before splice_locked exchange completes
+  log_info "Disconnecting LDK from Eclair..."
+  ldk_cli disconnect-peer "$ECLAIR_NODE_ID" > /dev/null 2>&1 || true
+  sleep 3
+
+  # Mine blocks while disconnected so both sides independently reach
+  # the splice_locked threshold
+  mine_blocks 10
+  sleep 5
+  log_info "Mined blocks while disconnected"
+
+  # Reconnect — splice_locked should be resent
+  log_info "Reconnecting..."
+  ldk_connect_peer "$ECLAIR_NODE_ID" "eclair:9735" > /dev/null 2>&1 || true
+  sleep 5
+
+  # Wait for the RBF splice to lock
+  ldk_wait_for_channel_value "$ldk_ucid" 700000
+
+  local rbf_confs
+  rbf_confs=$(get_tx_confirmations "$rbf_txid")
+  assert_gt "$rbf_confs" 0 "RBF tx $rbf_txid should be confirmed"
+  log_info "RBF tx $rbf_txid confirmed with $rbf_confs confirmations after reconnect"
+}
+
+test_12_splice_with_concurrent_payment() {
+  # (was test 10)
   log_info "Test 10: Splice with concurrent payment"
 
   # Open channel with push so Eclair has balance to send
@@ -534,7 +670,13 @@ main() {
   log_info "=========================================="
   run_test "Test 8: Reconnection after splice" test_8_reconnection_after_splice
   run_test "Test 9: Multiple sequential splices" test_9_multiple_sequential_splices
-  run_test "Test 10: Splice with concurrent payment" test_10_splice_with_concurrent_payment
+  # Tests 10-11 exercise RBF + disconnect before splice_locked.
+  # Currently the channel monitor sees the RBF tx spending the old funding output
+  # while disconnected and force-closes the channel. This is a known limitation
+  # of the experimental LDK splicing branch. Unskip when fixed.
+  skip_test "Test 10: LDK RBF disconnect before splice_locked" "channel monitor force-closes on RBF splice spend while disconnected"
+  skip_test "Test 11: Eclair RBF disconnect before splice_locked" "channel monitor force-closes on RBF splice spend while disconnected"
+  run_test "Test 12: Splice with concurrent payment" test_12_splice_with_concurrent_payment
 
   log_info ""
   report_results
