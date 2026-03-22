@@ -162,8 +162,9 @@ ldk_wait_for_channel_usable() {
       ldk_list_channels | jq '.' >&2
       return 1
     fi
-    mine_blocks 1
+    mine_blocks 4
     sleep 2
+    mine_blocks 4
   done
 }
 
@@ -193,8 +194,9 @@ ldk_wait_for_channel_value() {
       ldk_list_channels | jq '.' >&2
       return 1
     fi
-    mine_blocks 1
+    mine_blocks 4
     sleep 2
+    mine_blocks 4
   done
 }
 

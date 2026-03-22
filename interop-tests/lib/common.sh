@@ -156,9 +156,10 @@ wait_for_ldk_usable_channel() {
       echo "$channels" | jq '.' >&2
       return 1
     fi
-    # Mine a block to trigger chain processing
-    mine_blocks 1
+    # Mine blocks to trigger chain processing
+    mine_blocks 4
     sleep 2
+    mine_blocks 4
   done
 }
 
@@ -183,8 +184,9 @@ wait_for_eclair_channel_state() {
       log_fail "Timeout waiting for Eclair channel $channel_id state=$target_state (current=$state)"
       return 1
     fi
-    mine_blocks 1
+    mine_blocks 4
     sleep 2
+    mine_blocks 4
   done
 }
 

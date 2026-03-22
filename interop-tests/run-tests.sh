@@ -243,8 +243,9 @@ test_3_ldk_splice_out() {
       log_fail "Timeout waiting for splice-out (current=$val)"
       return 1
     fi
-    mine_blocks 1
+    mine_blocks 4
     sleep 2
+    mine_blocks 4
   done
 }
 
@@ -276,8 +277,9 @@ test_4_eclair_splice_out() {
       log_fail "Timeout waiting for splice-out to take effect (current=$val)"
       return 1
     fi
-    mine_blocks 1
+    mine_blocks 4
     sleep 2
+    mine_blocks 4
   done
 }
 
@@ -475,8 +477,9 @@ test_9_multiple_sequential_splices() {
       log_fail "Timeout waiting for splice-out (current=$val)"
       return 1
     fi
-    mine_blocks 1
+    mine_blocks 4
     sleep 2
+    mine_blocks 4
   done
 }
 
