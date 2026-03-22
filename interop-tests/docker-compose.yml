@@ -22,6 +22,9 @@ services:
         condition: service_healthy
     volumes:
       - ./eclair.conf:/data/eclair/eclair.conf:ro
+      - ./logback-eclair.xml:/opt/eclair/logback-eclair.xml:ro
+    environment:
+      - JAVA_OPTS=-Dlogback.configurationFile=/opt/eclair/logback-eclair.xml
     healthcheck:
       test: ["CMD", "curl", "-sf", "-u", ":eclairpass", "-X", "POST", "http://localhost:8080/getinfo"]
       interval: 10s

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.out</target>
+        <encoder>
+            <pattern>%d %-5level %replace(%logger{24}){'\$.*',''} %X{channelId} - %msg%ex{12}%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger level="DEBUG" name="fr.acinq.eclair.channel"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>
