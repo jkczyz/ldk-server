@@ -670,12 +670,13 @@ main() {
   log_info "=========================================="
   run_test "Test 8: Reconnection after splice" test_8_reconnection_after_splice
   run_test "Test 9: Multiple sequential splices" test_9_multiple_sequential_splices
-  # Tests 10-11 exercise RBF + disconnect before splice_locked.
-  # Currently the channel monitor sees the RBF tx spending the old funding output
-  # while disconnected and force-closes the channel. This is a known limitation
-  # of the experimental LDK splicing branch. Unskip when fixed.
-  skip_test "Test 10: LDK RBF disconnect before splice_locked" "channel monitor force-closes on RBF splice spend while disconnected"
-  skip_test "Test 11: Eclair RBF disconnect before splice_locked" "channel monitor force-closes on RBF splice spend while disconnected"
+  # Tests 10-11: RBF + disconnect before splice_locked.
+  # On reconnection, splice_locked is exchanged via my_current_funding_locked and the
+  # splice is promoted. But announcement_signatures verification then fails because
+  # LDK verifies using post-splice funding pubkeys while Eclair signed with pre-splice
+  # keys (channel.rs:11987-11994). See get_channel_announcement() at line 11867-11868.
+  skip_test "Test 10: LDK RBF disconnect before splice_locked" "announcement_signatures verification fails after splice promotion on reconnect"
+  skip_test "Test 11: Eclair RBF disconnect before splice_locked" "announcement_signatures verification fails after splice promotion on reconnect"
   run_test "Test 12: Splice with concurrent payment" test_12_splice_with_concurrent_payment
 
   log_info ""
