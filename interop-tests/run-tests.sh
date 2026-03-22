@@ -118,7 +118,7 @@ open_ldk_to_eclair_channel() {
   user_channel_id=$(echo "$open_result" | jq -r '.user_channel_id')
   log_info "Opened LDK channel: $user_channel_id (${amount_sats} sats)"
 
-  mine_and_sync 10
+  mine_and_sync 8
   ldk_wait_for_channel_usable "$user_channel_id"
 
   echo "$user_channel_id"
@@ -144,7 +144,7 @@ open_eclair_to_ldk_channel() {
   eclair_open "$LDK_NODE_ID" "$amount_sats" "$push_msat" > /dev/null
   log_info "Eclair opening channel to LDK (${amount_sats} sats)"
 
-  mine_and_sync 10
+  mine_and_sync 8
 
   # Find the NEW Eclair channel by diffing
   local eclair_channel_id=""
@@ -201,12 +201,12 @@ test_1_ldk_open_ldk_splice_in() {
   log_info "Splice-in 200000 sats initiated"
 
   # Splice should not take effect before enough confirmations
-  mine_and_sync 5
+  mine_and_sync 4
   local mid_value
   mid_value=$(ldk_get_channel_value "$ucid")
-  assert_eq "$mid_value" "500000" "Channel value should not change after only 5 confirmations"
+  assert_eq "$mid_value" "500000" "Channel value should not change after only 4 confirmations"
 
-  mine_and_sync 5
+  mine_and_sync 4
   ldk_wait_for_channel_value "$ucid" 700000
   log_info "Channel value after splice: 700000"
 }
@@ -223,12 +223,12 @@ test_2_eclair_open_eclair_splice_in() {
   eclair_splice_in "$eclair_cid" 200000 > /dev/null
   log_info "Eclair splice-in 200000 sats initiated"
 
-  mine_and_sync 5
+  mine_and_sync 4
   local mid_value
   mid_value=$(ldk_get_channel_value "$ldk_ucid")
-  assert_eq "$mid_value" "500000" "Channel value should not change after only 5 confirmations"
+  assert_eq "$mid_value" "500000" "Channel value should not change after only 4 confirmations"
 
-  mine_and_sync 5
+  mine_and_sync 4
   ldk_wait_for_channel_value "$ldk_ucid" 700000
   log_info "LDK channel value after Eclair splice-in: 700000"
 }
@@ -243,7 +243,7 @@ test_3_ldk_splice_out() {
   log_info "Splice-out 100000 sats initiated"
 
   # Splice-out deducts mining fees, so value will be slightly less than 400000
-  mine_and_sync 10
+  mine_and_sync 8
   local timeout=30 start
   start=$(date +%s)
   while true; do
@@ -280,7 +280,7 @@ test_4_eclair_splice_out() {
   log_info "Eclair splice-out 100000 sats to $out_addr"
 
   # Verify via LDK side; Eclair deducts mining fees so value won't be exactly 400000
-  mine_and_sync 10
+  mine_and_sync 8
   local timeout=30 start
   start=$(date +%s)
   while true; do
@@ -340,7 +340,7 @@ test_5_ldk_rbf_pending_splice() {
   assert_eq "$([ "$original_txid" != "$rbf_txid" ] && echo "true" || echo "false")" "true" \
     "RBF txid should differ from original (original=$original_txid rbf=$rbf_txid)"
 
-  mine_and_sync 10
+  mine_and_sync 8
   ldk_wait_for_channel_value "$ucid" 700000
 
   # Verify the RBF transaction was mined, not the original
@@ -392,7 +392,7 @@ test_6_eclair_rbf_pending_splice() {
     "RBF txid should differ from original (original=$original_txid rbf=$rbf_txid)"
 
   # Verify via LDK side
-  mine_and_sync 10
+  mine_and_sync 8
   ldk_wait_for_channel_value "$ldk_ucid" 700000
 
   # Verify the RBF transaction was mined, not the original
@@ -412,7 +412,7 @@ test_7_payments_through_spliced_channel() {
 
   # Splice-in to increase capacity
   ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 200000 > /dev/null
-  mine_and_sync 10
+  mine_and_sync 8
   ldk_wait_for_channel_value "$ucid" 700000
 
   # LDK -> Eclair payment
@@ -462,7 +462,7 @@ test_8_reconnection_after_splice() {
   sleep 5
 
   # Mine and verify
-  mine_and_sync 10
+  mine_and_sync 8
   ldk_wait_for_channel_value "$ucid" 700000
   log_info "Channel value after reconnection splice: 700000"
 }
@@ -476,21 +476,21 @@ test_9_multiple_sequential_splices() {
   # Splice-in 200k (500k -> 700k)
   log_info "Splice-in 200000 sats..."
   ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 200000 > /dev/null
-  mine_and_sync 10
+  mine_and_sync 8
   ldk_wait_for_channel_value "$ucid" 700000
   log_info "After splice-in #1: 700000"
 
   # Splice-in 100k (700k -> 800k)
   log_info "Splice-in 100000 sats..."
   ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 100000 > /dev/null
-  mine_and_sync 10
+  mine_and_sync 8
   ldk_wait_for_channel_value "$ucid" 800000
   log_info "After splice-in #2: 800000"
 
   # Splice-out 50k (800k -> ~750k minus fees)
   log_info "Splice-out 50000 sats..."
   ldk_splice_out "$ucid" "$ECLAIR_NODE_ID" 50000 > /dev/null
-  mine_and_sync 10
+  mine_and_sync 8
   local timeout=30 start
   start=$(date +%s)
   while true; do
@@ -569,7 +569,7 @@ test_10_rbf_reconnect_splice_locked() {
   sleep 5
 
   # Wait for the RBF splice to lock on both sides
-  mine_and_sync 10
+  mine_and_sync 8
   ldk_wait_for_channel_value "$ucid" 700000
 
   # Verify the RBF tx was the one that confirmed
@@ -639,7 +639,7 @@ test_11_eclair_rbf_reconnect_splice_locked() {
   sleep 5
 
   # Wait for the RBF splice to lock
-  mine_and_sync 10
+  mine_and_sync 8
   ldk_wait_for_channel_value "$ldk_ucid" 700000
 
   local rbf_confs
@@ -673,7 +673,7 @@ test_12_splice_with_concurrent_payment() {
   wait "$pay_pid" || log_info "Payment process returned non-zero (may still succeed)"
   sleep 5
 
-  mine_and_sync 10
+  mine_and_sync 8
   ldk_wait_for_channel_value "$ucid" 700000
   log_info "Channel value after concurrent splice + payment: 700000"
 }
