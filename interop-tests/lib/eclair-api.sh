@@ -48,7 +48,7 @@ eclair_open() {
   local node_id="$1"
   local amount_sats="$2"
   local push_msat="${3:-}"
-  local params="nodeId=$node_id&fundingSatoshis=$amount_sats&announceChannel=true"
+  local params="nodeId=$node_id&fundingSatoshis=$amount_sats&fundingFeeBudgetSatoshis=10000&announceChannel=true"
   if [ -n "$push_msat" ]; then
     params="${params}&pushMsat=$push_msat"
   fi
@@ -79,8 +79,9 @@ eclair_splice_out() {
 
 eclair_rbf_splice() {
   local channel_id="$1"
-  local target_feerate="$2"
-  eclair_api "rbfsplice" -d "channelId=$channel_id&targetFeerate=$target_feerate"
+  local target_feerate_sat_byte="$2"
+  local fee_budget="${3:-10000}"
+  eclair_api "rbfsplice" -d "channelId=$channel_id&targetFeerateSatByte=$target_feerate_sat_byte&fundingFeeBudgetSatoshis=$fee_budget"
 }
 
 # --- Payments ---

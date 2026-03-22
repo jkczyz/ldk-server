@@ -329,8 +329,8 @@ test_6_eclair_rbf_pending_splice() {
   original_txid=$(comm -13 <(echo "$mempool_before") <(echo "$mempool_after_splice") | head -1)
   log_info "Original splice txid: $original_txid"
 
-  # RBF with higher feerate (10000 sat/kw)
-  eclair_rbf_splice "$eclair_cid" 10000 > /dev/null
+  # RBF with higher feerate (10 sat/byte)
+  eclair_rbf_splice "$eclair_cid" 10 > /dev/null
   log_info "Eclair RBF splice initiated"
   sleep 5
 
