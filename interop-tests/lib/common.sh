@@ -66,6 +66,15 @@ mine_blocks() {
   bitcoin_rpc "generatetoaddress" "$count" "\"$addr\"" > /dev/null
 }
 
+get_mempool_txids() {
+  bitcoin_rpc "getrawmempool" | jq -r '.[]' | sort
+}
+
+get_tx_confirmations() {
+  local txid="$1"
+  bitcoin_rpc "getrawtransaction" "\"$txid\"" "true" | jq -r '.confirmations // 0'
+}
+
 get_block_height() {
   bitcoin_rpc "getblockcount" | jq -r '.'
 }

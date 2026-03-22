@@ -260,17 +260,46 @@ test_5_ldk_rbf_pending_splice() {
   local ucid
   ucid=$(open_ldk_to_eclair_channel 500000)
 
+  # Snapshot mempool before splice
+  local mempool_before
+  mempool_before=$(get_mempool_txids)
+
   # Splice-in but do NOT mine
   ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 200000 > /dev/null
   log_info "Splice-in initiated (not mined)"
   sleep 5
 
+  # Identify the original splice txid
+  local mempool_after_splice
+  mempool_after_splice=$(get_mempool_txids)
+  local original_txid
+  original_txid=$(comm -13 <(echo "$mempool_before") <(echo "$mempool_after_splice") | head -1)
+  log_info "Original splice txid: $original_txid"
+
   # RBF bump
   ldk_rbf_channel "$ucid" "$ECLAIR_NODE_ID" > /dev/null
   log_info "RBF bump initiated"
+  sleep 5
+
+  # Identify the replacement txid
+  local mempool_after_rbf
+  mempool_after_rbf=$(get_mempool_txids)
+  local rbf_txid
+  rbf_txid=$(comm -13 <(echo "$mempool_before") <(echo "$mempool_after_rbf") | head -1)
+  log_info "RBF txid: $rbf_txid"
+
+  # The txids must differ
+  assert_eq "$([ "$original_txid" != "$rbf_txid" ] && echo "true" || echo "false")" "true" \
+    "RBF txid should differ from original (original=$original_txid rbf=$rbf_txid)"
 
   mine_and_sync 6
   ldk_wait_for_channel_usable "$ucid" 90
+
+  # Verify the RBF transaction was mined, not the original
+  local rbf_confs
+  rbf_confs=$(get_tx_confirmations "$rbf_txid")
+  assert_gt "$rbf_confs" 0 "RBF tx $rbf_txid should be confirmed"
+  log_info "RBF tx confirmed with $rbf_confs confirmations"
 
   local new_value
   new_value=$(ldk_get_channel_value "$ucid")
@@ -284,18 +313,47 @@ test_6_eclair_rbf_pending_splice() {
   local eclair_cid
   eclair_cid=$(open_eclair_to_ldk_channel 500000)
 
+  # Snapshot mempool before splice
+  local mempool_before
+  mempool_before=$(get_mempool_txids)
+
   # Splice-in but do NOT mine
   eclair_splice_in "$eclair_cid" 200000 > /dev/null
   log_info "Eclair splice-in initiated (not mined)"
   sleep 5
 
+  # Identify the original splice txid
+  local mempool_after_splice
+  mempool_after_splice=$(get_mempool_txids)
+  local original_txid
+  original_txid=$(comm -13 <(echo "$mempool_before") <(echo "$mempool_after_splice") | head -1)
+  log_info "Original splice txid: $original_txid"
+
   # RBF with higher feerate (10000 sat/kw)
   eclair_rbf_splice "$eclair_cid" 10000 > /dev/null
   log_info "Eclair RBF splice initiated"
+  sleep 5
+
+  # Identify the replacement txid
+  local mempool_after_rbf
+  mempool_after_rbf=$(get_mempool_txids)
+  local rbf_txid
+  rbf_txid=$(comm -13 <(echo "$mempool_before") <(echo "$mempool_after_rbf") | head -1)
+  log_info "RBF txid: $rbf_txid"
+
+  # The txids must differ
+  assert_eq "$([ "$original_txid" != "$rbf_txid" ] && echo "true" || echo "false")" "true" \
+    "RBF txid should differ from original (original=$original_txid rbf=$rbf_txid)"
 
   mine_and_sync 6
   eclair_wait_for_channel_normal "$eclair_cid" 90
   wait_for_ldk_usable_channel 90
+
+  # Verify the RBF transaction was mined, not the original
+  local rbf_confs
+  rbf_confs=$(get_tx_confirmations "$rbf_txid")
+  assert_gt "$rbf_confs" 0 "RBF tx $rbf_txid should be confirmed"
+  log_info "RBF tx confirmed with $rbf_confs confirmations"
 
   # Verify on LDK side
   local ldk_ucid
