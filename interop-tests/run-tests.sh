@@ -118,6 +118,7 @@ open_ldk_to_eclair_channel() {
   user_channel_id=$(echo "$open_result" | jq -r '.user_channel_id')
   log_info "Opened LDK channel: $user_channel_id (${amount_sats} sats)"
 
+  sleep 3
   mine_and_sync 8
   ldk_wait_for_channel_usable "$user_channel_id"
 
@@ -144,6 +145,7 @@ open_eclair_to_ldk_channel() {
   eclair_open "$LDK_NODE_ID" "$amount_sats" "$push_msat" > /dev/null
   log_info "Eclair opening channel to LDK (${amount_sats} sats)"
 
+  sleep 3
   mine_and_sync 8
 
   # Find the NEW Eclair channel by diffing
@@ -201,6 +203,7 @@ test_1_ldk_open_ldk_splice_in() {
   log_info "Splice-in 200000 sats initiated"
 
   # Splice should not take effect before enough confirmations
+  sleep 3
   mine_and_sync 4
   local mid_value
   mid_value=$(ldk_get_channel_value "$ucid")
@@ -223,6 +226,7 @@ test_2_eclair_open_eclair_splice_in() {
   eclair_splice_in "$eclair_cid" 200000 > /dev/null
   log_info "Eclair splice-in 200000 sats initiated"
 
+  sleep 3
   mine_and_sync 4
   local mid_value
   mid_value=$(ldk_get_channel_value "$ldk_ucid")
@@ -243,6 +247,7 @@ test_3_ldk_splice_out() {
   log_info "Splice-out 100000 sats initiated"
 
   # Splice-out deducts mining fees, so value will be slightly less than 400000
+  sleep 3
   mine_and_sync 8
   local timeout=30 start
   start=$(date +%s)
@@ -280,6 +285,7 @@ test_4_eclair_splice_out() {
   log_info "Eclair splice-out 100000 sats to $out_addr"
 
   # Verify via LDK side; Eclair deducts mining fees so value won't be exactly 400000
+  sleep 3
   mine_and_sync 8
   local timeout=30 start
   start=$(date +%s)
@@ -412,6 +418,7 @@ test_7_payments_through_spliced_channel() {
 
   # Splice-in to increase capacity
   ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 200000 > /dev/null
+  sleep 3
   mine_and_sync 8
   ldk_wait_for_channel_value "$ucid" 700000
 
@@ -476,6 +483,7 @@ test_9_multiple_sequential_splices() {
   # Splice-in 200k (500k -> 700k)
   log_info "Splice-in 200000 sats..."
   ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 200000 > /dev/null
+  sleep 3
   mine_and_sync 8
   ldk_wait_for_channel_value "$ucid" 700000
   log_info "After splice-in #1: 700000"
@@ -483,6 +491,7 @@ test_9_multiple_sequential_splices() {
   # Splice-in 100k (700k -> 800k)
   log_info "Splice-in 100000 sats..."
   ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 100000 > /dev/null
+  sleep 3
   mine_and_sync 8
   ldk_wait_for_channel_value "$ucid" 800000
   log_info "After splice-in #2: 800000"
@@ -490,6 +499,7 @@ test_9_multiple_sequential_splices() {
   # Splice-out 50k (800k -> ~750k minus fees)
   log_info "Splice-out 50000 sats..."
   ldk_splice_out "$ucid" "$ECLAIR_NODE_ID" 50000 > /dev/null
+  sleep 3
   mine_and_sync 8
   local timeout=30 start
   start=$(date +%s)
