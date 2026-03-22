@@ -4,6 +4,16 @@ FROM rust:1.85-bookworm AS builder
 WORKDIR /build
 COPY . .
 
+# Fetch dependencies first, then patch LDK source
+RUN cargo fetch
+# Fix: don't generate announcement_signatures during reestablish when a splice
+# promotion is about to happen via my_current_funding_locked referring to a
+# pending splice funding.
+RUN find /usr/local/cargo/git -path "*/lightning/src/ln/channel.rs" \
+    -exec grep -l "inferred_splice_locked" {} \; \
+    | head -1 \
+    | xargs sed -i 's/let announcement_sigs = self\.get_announcement_sigs(node_signer, chain_hash, user_config, best_block\.height, logger);/let splice_promotion_pending = msg.my_current_funding_locked.as_ref().map(|fl| self.pending_funding().iter().any(|f| f.get_funding_txid() == Some(fl.txid))).unwrap_or(false); let announcement_sigs = if splice_promotion_pending { None } else { self.get_announcement_sigs(node_signer, chain_hash, user_config, best_block.height, logger) };/'
+
 RUN cargo build --release -p ldk-server -p ldk-server-cli
 
 # Runtime stage

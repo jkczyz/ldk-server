@@ -6,6 +6,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends git unzip \
 
 WORKDIR /build
 RUN git clone --depth 1 --branch splicing-official https://github.com/ACINQ/eclair.git .
+# Fix: only retransmit announcement_signatures for the initial funding when
+# my_current_funding_locked actually refers to it, not when it refers to a splice.
+RUN sed -i 's/val announcementSigs_opt = if (notAnnouncedYet || channelReestablish.retransmitAnnSigs) {/val retransmitAnnSigsForInitialFunding = channelReestablish.retransmitAnnSigs \&\& channelReestablish.myCurrentFundingLocked_opt.contains(c.fundingTxId)\n        val announcementSigs_opt = if (notAnnouncedYet || retransmitAnnSigsForInitialFunding) {/' \
+    eclair-core/src/main/scala/fr/acinq/eclair/channel/fsm/Channel.scala
 RUN ./mvnw package -pl eclair-node -am -DskipTests -q
 
 # Extract the distribution ZIP to a known location
