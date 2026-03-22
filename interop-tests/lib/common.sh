@@ -174,6 +174,10 @@ wait_for_eclair_channel_state() {
     if [ "$state" = "$target_state" ]; then
       return 0
     fi
+    if [[ "$state" == CLOSED* ]] || [ "$state" = "ERR_INFORMATION_LEAK" ]; then
+      log_fail "Eclair channel $channel_id reached terminal state: $state"
+      return 1
+    fi
     local elapsed=$(( $(date +%s) - start ))
     if [ "$elapsed" -ge "$timeout" ]; then
       log_fail "Timeout waiting for Eclair channel $channel_id state=$target_state (current=$state)"

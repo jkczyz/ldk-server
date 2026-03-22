@@ -142,13 +142,19 @@ ldk_bolt11_send() {
 ldk_wait_for_channel_usable() {
   local user_channel_id="$1"
   local timeout="${2:-90}"
-  local start
+  local start seen=false
   start=$(date +%s)
   while true; do
     local usable
-    usable=$(ldk_is_channel_usable "$user_channel_id" 2>/dev/null) || usable="false"
+    usable=$(ldk_is_channel_usable "$user_channel_id" 2>/dev/null) || usable=""
     if [ "$usable" = "true" ]; then
       return 0
+    fi
+    if [ -n "$usable" ]; then
+      seen=true
+    elif $seen; then
+      log_fail "LDK channel $user_channel_id no longer exists (force-closed?)"
+      return 1
     fi
     local elapsed=$(( $(date +%s) - start ))
     if [ "$elapsed" -ge "$timeout" ]; then
@@ -167,13 +173,19 @@ ldk_wait_for_channel_value() {
   local user_channel_id="$1"
   local expected_value="$2"
   local timeout="${3:-120}"
-  local start
+  local start seen=false
   start=$(date +%s)
   while true; do
     local val
     val=$(ldk_get_channel_value "$user_channel_id" 2>/dev/null) || val=""
     if [ "$val" = "$expected_value" ]; then
       return 0
+    fi
+    if [ -n "$val" ]; then
+      seen=true
+    elif $seen; then
+      log_fail "LDK channel $user_channel_id no longer exists (force-closed?)"
+      return 1
     fi
     local elapsed=$(( $(date +%s) - start ))
     if [ "$elapsed" -ge "$timeout" ]; then
