@@ -20,19 +20,19 @@ TEST_RESULTS=()
 # --- Logging ---
 
 log_info() {
-  echo -e "${BLUE}[INFO]${NC} $*"
+  echo -e "${BLUE}[INFO]${NC} $*" >&2
 }
 
 log_pass() {
-  echo -e "${GREEN}[PASS]${NC} $*"
+  echo -e "${GREEN}[PASS]${NC} $*" >&2
 }
 
 log_fail() {
-  echo -e "${RED}[FAIL]${NC} $*"
+  echo -e "${RED}[FAIL]${NC} $*" >&2
 }
 
 log_skip() {
-  echo -e "${YELLOW}[SKIP]${NC} $*"
+  echo -e "${YELLOW}[SKIP]${NC} $*" >&2
 }
 
 log_debug() {
@@ -236,7 +236,12 @@ run_test() {
   log_info "===== Running: $name ====="
   local logfile="/tmp/test_${TESTS_RUN}.log"
 
-  if "$func" > "$logfile" 2>&1; then
+  set +e
+  ( set -e; "$func" ) > "$logfile" 2>&1
+  local rc=$?
+  set -e
+  cat "$logfile" >&2
+  if [ "$rc" -eq 0 ]; then
     TESTS_PASSED=$((TESTS_PASSED + 1))
     log_pass "$name"
     TEST_RESULTS+=("PASS: $name")
@@ -245,8 +250,6 @@ run_test() {
     log_fail "$name"
     TEST_RESULTS+=("FAIL: $name")
     # Dump diagnostics
-    echo "--- Test log ---" >&2
-    cat "$logfile" >&2
     echo "--- LDK channels ---" >&2
     ldk_cli list-channels 2>/dev/null | jq '.' >&2 || true
     echo "--- Eclair channels ---" >&2
