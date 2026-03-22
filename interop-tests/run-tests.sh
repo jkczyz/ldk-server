@@ -200,7 +200,13 @@ test_1_ldk_open_ldk_splice_in() {
   ldk_splice_in "$ucid" "$ECLAIR_NODE_ID" 200000 > /dev/null
   log_info "Splice-in 200000 sats initiated"
 
-  mine_and_sync 10
+  # Splice should not take effect before enough confirmations
+  mine_and_sync 5
+  local mid_value
+  mid_value=$(ldk_get_channel_value "$ucid")
+  assert_eq "$mid_value" "500000" "Channel value should not change after only 5 confirmations"
+
+  mine_and_sync 5
   ldk_wait_for_channel_value "$ucid" 700000
   log_info "Channel value after splice: 700000"
 }
@@ -217,7 +223,12 @@ test_2_eclair_open_eclair_splice_in() {
   eclair_splice_in "$eclair_cid" 200000 > /dev/null
   log_info "Eclair splice-in 200000 sats initiated"
 
-  mine_and_sync 10
+  mine_and_sync 5
+  local mid_value
+  mid_value=$(ldk_get_channel_value "$ldk_ucid")
+  assert_eq "$mid_value" "500000" "Channel value should not change after only 5 confirmations"
+
+  mine_and_sync 5
   ldk_wait_for_channel_value "$ldk_ucid" 700000
   log_info "LDK channel value after Eclair splice-in: 700000"
 }
